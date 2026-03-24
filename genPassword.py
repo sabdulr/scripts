@@ -1,156 +1,188 @@
 #!/usr/bin/env python3
 
-import sys
-import random
-import string
 import argparse
-import os
-
-def get_args():
-   parser = argparse.ArgumentParser(description='Process some integers.')
-   parser.add_argument('--mixed_case', '-mc', type=str, help='Mixed Case?', required=False)
-   parser.add_argument('--include_numbers', '-in', type=str, help='Include Numbers in Password?', required=False)
-   parser.add_argument('--include_special_chars', '-is', type=str, help='Include Special Characters in Password?', required=False)
-   parser.add_argument('--length', '-l', type=int, help='Length of Password', required=False)
-   parser.add_argument('--name', '-n', type=str, help='Name of this password (no spaces)', required=False)
-   parser.add_argument('--path', '-p', type=str, help='Path to save file', required=False)
-   parser.add_argument('--save', '-s', type=str, help='Save to file?', required=False)
-
-   args = parser.parse_args()
-
-   #print("value: " + args.include_numbers)
-
-   mixed_case=args.mixed_case
-   include_numbers=args.include_numbers
-   include_special_chars=args.include_special_chars
-   length=args.length
-   name=args.name
-   path=args.path
-   save=args.save
-   filename=None
+import secrets
+import string
+from dataclasses import dataclass
+from pathlib import Path
 
 
-   special_chars="#$%&'()*+,/:;<=>?@[\]^`{|}~ "
-   if name != None:
-      if any(c in special_chars for c in name):
-         name=None
+YES_VALUES = {"y", "yes"}
+NO_VALUES = {"n", "no"}
 
-   while name == None:
-      # --> python2 name = input("Enter Name of password: ")
-      name = input("Enter Name of password: ")
-      if any(c in special_chars for c in name):
-         print("--ERROR-- Name should not contain special characters")
-         name = None
 
-   while save == None:
-      save = input("Save password to file [%s.pwd]? " %name)
-      if save.lower() in ['y', 'yes', 'n', 'no']:
-         if save.lower() in ['y', 'yes']:
-            save='y'
-            while path == None:
-               path = input("Path to save %s.pwd? " %name)
-               if not os.path.isdir(path):
-                  print("--ERROR-- Please make sure %s exists first" %path)
-                  path=None
-         else:
-            save='n'
-      else:
-         print("--ERROR-- Excepted answers are [y|yes|n|no] -- Try again")
-         save = None
-              
-   if save == 'y':
-      path = os.path.abspath(path)
-      if path.endswith('/') and len(path) > 1:
-         path=path[:-1]
-      filename=os.path.join(path, name + ".pwd")
+@dataclass
+class PasswordConfig:
+    length: int
+    mixed_case: bool
+    include_numbers: bool
+    include_special_chars: bool
+    save: bool
+    name: str | None = None
+    path: Path | None = None
 
-   if length == None:
-      while length == None:
-         length = input("Password Length: ")
-         try:
-            length=int(length)
+    def __post_init__(self) -> None:
+        if self.length <= 0:
+            raise ValueError("Password length must be greater than 0.")
+
+        if self.save:
+            if not self.name or not self.name.strip():
+                raise ValueError("Name is required when save=True.")
+            if self.path is None:
+                raise ValueError("Path is required when save=True.")
+            if not self.path.exists() or not self.path.is_dir():
+                raise ValueError(f"Path does not exist or is not a directory: {self.path}")
+
+
+def generate_password(
+    length: int,
+    mixed_case: bool = True,
+    include_numbers: bool = True,
+    include_special_chars: bool = True,
+) -> str:
+    char_string = string.ascii_lowercase
+
+    if mixed_case:
+        char_string += string.ascii_uppercase
+    if include_numbers:
+        char_string += string.digits
+    if include_special_chars:
+        char_string += string.punctuation
+
+    return "".join(secrets.choice(char_string) for _ in range(length))
+
+
+def prompt_yes_no(prompt: str) -> bool:
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in YES_VALUES:
+            return True
+        if answer in NO_VALUES:
+            return False
+        print("--ERROR-- Expected answers are [y|yes|n|no]. Try again.")
+
+
+def parse_yes_no(value: str | None, prompt: str) -> bool:
+    if value is None:
+        return prompt_yes_no(prompt)
+
+    value = value.strip().lower()
+    if value in YES_VALUES:
+        return True
+    if value in NO_VALUES:
+        return False
+
+    raise ValueError("--ERROR-- Expected answers are [y|yes|n|no]")
+
+
+def get_length(value: int | None) -> int:
+    if value is not None:
+        if value <= 0:
+            raise ValueError("--ERROR-- Password length must be greater than 0.")
+        return value
+
+    while True:
+        raw = input("Length of password: ").strip()
+        try:
+            length = int(raw)
             if length <= 0:
-               raise ValueError
-         except:
-            print("--ERROR-- length must be an integer > 0, try again")
-            length=None
-
-   #######
-   if mixed_case == None:
-      while mixed_case == None:
-         mixed_case = input("Include Mixed Case? ")
-         if mixed_case.lower() in ['y', 'yes', 'n', 'no']:
-            if mixed_case.lower() in ['y', 'yes']:
-               mixed_case='y'
-         else:
-            print("--ERROR-- Excepted answers are [y|yes|n|no] -- Try again")
-            mixed_case=None
-    ########
-
-   if include_numbers == None:
-      while include_numbers == None:
-         include_numbers = input("Include Numbers in Password? ")
-         if include_numbers.lower() in ['y', 'yes', 'n', 'no']:
-            if include_numbers.lower() in ['y', 'yes']:
-               include_numbers='y'
-         else:
-            print("--ERROR-- Excepted answers are [y|yes|n|no] -- Try again")
-            include_numbers=None
-      
-   if include_special_chars == None:
-      while include_special_chars == None:
-         include_special_chars = input("Include special characters in Password? ")
-         if include_special_chars.lower() in ['y', 'yes', 'n', 'no']:
-            if include_special_chars.lower() in ['y', 'yes']:
-               include_special_chars='y'
-         else:
-            print("--ERROR-- Excepted answers are [y|yes|n|no] -- Try again")
-            include_special_chars=None         
+                print("--ERROR-- Password length must be greater than 0.")
+                continue
+            return length
+        except ValueError:
+            print("--ERROR-- Please enter a valid integer.")
 
 
-   char_string=string.ascii_letters
+def get_name(value: str | None) -> str:
+    if value is not None:
+        value = value.strip()
+        if not value:
+            raise ValueError("--ERROR-- Name cannot be empty.")
+        return value
 
-   if include_numbers == 'y':
-      char_string="%s%s" %(char_string, string.digits)
+    while True:
+        name = input("Enter name of password: ").strip()
+        if name:
+            return name
+        print("--ERROR-- Name cannot be empty.")
 
-   if include_special_chars == 'y':
-      char_string="%s%s" %(char_string, string.punctuation)
 
-   if mixed_case == 'y':
-       s=string.ascii_letters.upper()
-       char_string="%s%s" %(char_string, s)
+def get_path(value: str | None) -> Path:
+    if value is not None:
+        path = Path(value).expanduser()
+        if not path.exists() or not path.is_dir():
+            raise ValueError(f"--ERROR-- Please make sure {path} exists.")
+        return path
 
-   return length, char_string, filename
+    while True:
+        raw = input("Enter path to save password file: ").strip()
+        path = Path(raw).expanduser()
+        if path.exists() and path.is_dir():
+            return path
+        print(f"--ERROR-- Please make sure {path} exists.")
 
-def generatePassword(length, char_string):
-   result_str = ''.join(random.choice(char_string) for i in range(length))
 
-   return result_str
+def get_args() -> PasswordConfig:
+    parser = argparse.ArgumentParser(description="Generate a random password.")
+    parser.add_argument("-l", "--length", type=int, help="Length of password")
+    parser.add_argument("-mc", "--mixed_case", type=str, help="Use mixed case? [y|yes|n|no]")
+    parser.add_argument("-in", "--include_numbers", type=str, help="Include numbers? [y|yes|n|no]")
+    parser.add_argument(
+        "-is",
+        "--include_special_chars",
+        type=str,
+        help="Include special characters? [y|yes|n|no]",
+    )
+    parser.add_argument("-s", "--save", type=str, help="Save password to file? [y|yes|n|no]")
+    parser.add_argument("-n", "--name", type=str, help="Name of password")
+    parser.add_argument("-p", "--path", type=str, help="Path to save password file")
 
-def main():
-   print("**************************************************")
-   print("* Starting Program to generate random password")
-   print("**************************************************\n")
+    args = parser.parse_args()
 
-   length, char_string, filename = get_args()
+    length = get_length(args.length)
+    mixed_case = parse_yes_no(args.mixed_case, "Use mixed case? [y|yes|n|no]: ")
+    include_numbers = parse_yes_no(args.include_numbers, "Include numbers? [y|yes|n|no]: ")
+    include_special_chars = parse_yes_no(
+        args.include_special_chars,
+        "Include special characters? [y|yes|n|no]: ",
+    )
+    save = parse_yes_no(args.save, "Save password to file? [y|yes|n|no]: ")
 
-   print("\nLength of Password: %s" %(str(length)))
-   if filename != None:
-      print("File: %s" %filename)
+    name = None
+    path = None
 
-   password = generatePassword(length, char_string)
+    if save:
+        name = get_name(args.name)
+        path = get_path(args.path)
 
-   if filename != None:
-      print("Save to file..")
-      with open(filename, 'w') as f:
-         f.write(password + '\n')
+    return PasswordConfig(
+        length=length,
+        mixed_case=mixed_case,
+        include_numbers=include_numbers,
+        include_special_chars=include_special_chars,
+        save=save,
+        name=name,
+        path=path,
+    )
 
-      print("\nPassword successfully saved to %s\n\n" %filename)
 
-   print("\nProgram Completed\n")
-   sys.exit(0)
+def main() -> None:
+    config = get_args()
+
+    password = generate_password(
+        length=config.length,
+        mixed_case=config.mixed_case,
+        include_numbers=config.include_numbers,
+        include_special_chars=config.include_special_chars,
+    )
+
+    if config.save:
+        filename = config.path / f"{config.name}.pwd"
+        filename.write_text(password + "\n", encoding="utf-8")
+        print(f"Password saved to {filename}")
+    else:
+        print(password)
 
 
 if __name__ == "__main__":
-   main()
-
+    main()
